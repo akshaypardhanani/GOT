@@ -1,6 +1,8 @@
 
 # :unicorn: This is a Generic Object Tracking Project
 
+Personal website: [Shih-Fang Chen](https://chenshihfang.github.io/) · [CV](https://chenshihfang.github.io/cv/)
+
 ## 🔥 Paper Accepted at ICLR 2026!
 
 **GOT-Edit: Geometry-Aware Generic Object Tracking via Online Model Editing**
