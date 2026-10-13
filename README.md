@@ -1,7 +1,7 @@
 
 # :unicorn: This is a Generic Object Tracking Project
 
-Personal website: [Shih-Fang Chen](https://chenshihfang.github.io/) · [CV](https://chenshihfang.github.io/cv/)
+More details about these research projects, including research slides, are available on:  [Website](https://chenshihfang.github.io/)
 
 ## 🔥 Paper Accepted at ICLR 2026!
 
