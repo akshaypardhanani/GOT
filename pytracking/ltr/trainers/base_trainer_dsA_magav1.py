@@ -5,6 +5,7 @@ import glob
 import time
 
 import torch
+from pytracking.utils.device import get_device
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -114,7 +115,7 @@ def _build_ds_config(settings):
 def _pick_device_from_local_rank():
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     if not torch.cuda.is_available():
-        return torch.device("cpu"), local_rank
+        return get_device(), local_rank
 
     n = torch.cuda.device_count()
     if n <= 0:

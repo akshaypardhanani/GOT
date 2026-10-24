@@ -23,6 +23,7 @@ import torchvision.transforms.functional as fn
 import torchvision.transforms as transforms
 import cv2
 import torch.nn.functional as F
+from pytracking.utils.device import autocast, autocast_dtype, get_device
 import sys
 import os.path
 from os import path
@@ -62,7 +63,7 @@ if cpu_lim:
     os.environ["NUMEXPR_NUM_THREADS"] = str(cpu_num)
     torch.set_num_threads(cpu_num)
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = get_device()
 
 
 class ToMPnet(nn.Module):
@@ -124,7 +125,7 @@ class ToMPnet(nn.Module):
 
         # bfloat16 is supported on Ampere GPUs (Compute Capability 8.0+)
         self.dtype = (
-            torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float32
+            autocast_dtype(device)
         )
         print("self.dtype", self.dtype)
 
@@ -140,7 +141,7 @@ class ToMPnet(nn.Module):
         """
         with torch.no_grad():
             if (self.auto_cast and self.training) or self.infer_bf16 or self.bf16_dinoonly:
-                with torch.cuda.amp.autocast(dtype=self.dtype):
+                with autocast(device, dtype=self.dtype):
                     if backbone == "VIT-L":
                         total_features_inter4 = self.feature_extractor.get_intermediate_layers(
                             images,
@@ -183,7 +184,7 @@ class ToMPnet(nn.Module):
         total_features = torch.mean(torch.stack(total_features), dim=0)
 
         if self.bf16_dinoonly:
-            with torch.cuda.amp.autocast(enabled=False):
+            with autocast(device, enabled=False):
                 total_features = self.bkMlp(total_features)
         else:
             total_features = self.bkMlp(total_features)

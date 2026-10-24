@@ -1,6 +1,7 @@
 import os
 import glob
 import torch
+from pytracking.utils.device import get_device
 import traceback,time
 from ltr.admin import loading, multigpu
 import random
@@ -32,7 +33,7 @@ class BaseTrainer:
 
         self.device = getattr(settings, 'device', None)
         if self.device is None:
-            self.device = torch.device("cuda:0" if torch.cuda.is_available() and settings.use_gpu else "cpu")
+            self.device = get_device(use_gpu=settings.use_gpu)
 
         self.actor.to(self.device)
 

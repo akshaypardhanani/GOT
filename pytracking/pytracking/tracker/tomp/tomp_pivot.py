@@ -16,6 +16,7 @@ from pytracking.features.preprocessing import numpy_to_torch
 from pytracking.features.preprocessing import sample_patch_multiscale, sample_patch_transformed
 from pytracking.features import augmentation
 from ltr.models.layers import activation
+from pytracking.utils.device import get_device, resolve_device
 
 from collections import OrderedDict
 
@@ -37,9 +38,6 @@ import ltr.data.processing_utils as prutils
 
 import cv2
 import torchvision.transforms.functional as fn
-
-start = torch.cuda.Event(enable_timing=True)
-end = torch.cuda.Event(enable_timing=True)
 
 
 class ToMP(BaseTracker):
@@ -63,7 +61,9 @@ class ToMP(BaseTracker):
         """
         self.frame_num = 1
         if not self.params.has("device"):
-            self.params.device = "cuda" if self.params.use_gpu else "cpu"
+            self.params.device = str(get_device(use_gpu=self.params.use_gpu))
+        self.device = resolve_device(self.params.device, use_gpu=self.params.use_gpu)
+        self.params.device = str(self.device)
 
         self.initialize_features()
         self.net = self.params.net
@@ -308,7 +308,7 @@ class ToMP(BaseTracker):
         # CLIP: prepare test features and image patches for prompt generation.
         test_feat_head = test_x
 
-        im_patches = im_patches.cuda()
+        im_patches = im_patches.to(self.device)
 
         if self.net.show:
             test_im_A = self.net.resize_5d_tensor(im_patches, size=378)
@@ -488,7 +488,7 @@ class ToMP(BaseTracker):
 
             self.pre_w, self.pre_h = bb[2], bb[3]
 
-            im = im.cuda()
+            im = im.to(self.device)
 
             tensor_crop_im, cv_crop_im = self.infer_im_2_crop_tensor(
                 im, torch.FloatTensor(bb), in_RGB2BGR=1, im_size=352, norm=0
@@ -852,7 +852,7 @@ class ToMP(BaseTracker):
 
             im_patches = self.extra_norm2(im_patches)
             im_patches = self.net.resize_5d_tensor(im_patches, size=378)
-            im_patches = im_patches.cuda()
+            im_patches = im_patches.to(self.device)
             backbone_feat = OrderedDict()
 
             backbone_feat["layer3"] = self.net.extract_dino_features_spatial(im_patches)
@@ -867,7 +867,7 @@ class ToMP(BaseTracker):
 
             im_patches = self.net.resize_5d_tensor(im_patches, size=378)
 
-            im_patches = im_patches.cuda()
+            im_patches = im_patches.to(self.device)
 
             backbone_feat = OrderedDict()
 
@@ -989,7 +989,7 @@ class ToMP(BaseTracker):
 
             im_patches = self.net.resize_5d_tensor(im_patches, size=378)
 
-            im_patches = im_patches.cuda()
+            im_patches = im_patches.to(self.device)
 
             init_backbone_feat = OrderedDict()
 
@@ -1293,7 +1293,7 @@ class ToMP(BaseTracker):
         _mean = torch.Tensor(mean).view(-1, 1, 1).to(im_patches.device)
         _std = torch.Tensor(std).view(-1, 1, 1).to(im_patches.device)
 
-        im_patches -= _mean.cuda()
-        im_patches /= _std.cuda()
+        im_patches -= _mean
+        im_patches /= _std
 
         return im_patches

@@ -7,6 +7,7 @@ import os
 from pytracking.utils.loading import load_network
 from ltr.models.backbone.resnet18_vggm import resnet18_vggmconv1
 from ltr.models.backbone.mobilenetv3 import mobilenet3
+from pytracking.utils.device import get_device
 
 normalize = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                              std=[0.229, 0.224, 0.225])
@@ -29,6 +30,7 @@ class ResNet18m1(MultiFeatureBase):
 
         self.output_layers = list(output_layers)
         self.use_gpu = use_gpu
+        self.device = get_device(use_gpu=use_gpu)
         self.net_path = 'resnet18_vggmconv1/resnet18_vggmconv1.pth' if net_path is None else net_path
 
     def initialize(self):
@@ -62,8 +64,7 @@ class ResNet18m1(MultiFeatureBase):
         if self.net is None:
             raise Exception('Did not find network file {}'.format(self.net_path))
 
-        if self.use_gpu:
-            self.net.cuda()
+        self.net.to(self.device)
         self.net.eval()
 
     def dim(self):
@@ -77,8 +78,7 @@ class ResNet18m1(MultiFeatureBase):
         im -= self.mean
         im /= self.std
 
-        if self.use_gpu:
-            im = im.cuda()
+        im = im.to(self.device)
 
         with torch.no_grad():
             return TensorList(self.net(im).values())
@@ -100,6 +100,7 @@ class Mobilenet(MultiFeatureBase):
 
         self.output_layers = list(output_layers)
         self.use_gpu = use_gpu
+        self.device = get_device(use_gpu=use_gpu)
         self.net_path = 'mobilev3_test.t7' if net_path is None else net_path
 
     def initialize(self):
@@ -132,8 +133,7 @@ class Mobilenet(MultiFeatureBase):
         if self.net is None:
             raise Exception('Did not find network file {}'.format(self.net_path))
 
-        if self.use_gpu:
-            self.net.cuda()
+        self.net.to(self.device)
         self.net.eval()
 
     def dim(self):
@@ -147,8 +147,7 @@ class Mobilenet(MultiFeatureBase):
         im -= self.mean
         im /= self.std
 
-        if self.use_gpu:
-            im = im.cuda()
+        im = im.to(self.device)
 
         with torch.no_grad():
             return TensorList(self.net(im).values())
@@ -166,13 +165,13 @@ class ATOMResNet18(MultiFeatureBase):
 
         self.output_layers = list(output_layers)
         self.use_gpu = use_gpu
+        self.device = get_device(use_gpu=use_gpu)
         self.net_path = net_path
 
     def initialize(self):
         self.net = load_network(self.net_path)
 
-        if self.use_gpu:
-            self.net.cuda()
+        self.net.to(self.device)
         self.net.eval()
 
         self.iou_predictor = self.net.bb_regressor
@@ -203,8 +202,7 @@ class ATOMResNet18(MultiFeatureBase):
         im -= self.mean
         im /= self.std
 
-        if self.use_gpu:
-            im = im.cuda()
+        im = im.to(self.device)
 
         with torch.no_grad():
             output_features = self.net.extract_features(im, self.feature_layers)

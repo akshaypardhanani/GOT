@@ -28,7 +28,7 @@ import numpy as np
 import cv2
 from timm.models.layers import DropPath
 from typing import Tuple, Union, Optional, Dict, Sequence, List
-from torch.cuda.amp import autocast
+from pytracking.utils.device import autocast as device_autocast, autocast_dtype, get_device
 
 try:
     from timm.models.layers import drop, drop_path, trunc_normal_
@@ -38,6 +38,7 @@ from collections import OrderedDict
 
 # DinoPatch = 18
 DinoPatch = 27
+_DEVICE = get_device()
 print("DinoPatch head", DinoPatch)
 import torch
 import torch.nn as nn
@@ -89,11 +90,7 @@ class Head(nn.Module):
         print("self.regMethod head", self.regMethod)
 
         # Prefer fp32 for stability unless explicitly forced elsewhere
-        self.dtype = (
-            torch.bfloat16
-            if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
-            else torch.float32
-        )
+        self.dtype = autocast_dtype(_DEVICE)
 
         self.AlphaEditHyperparams = {
             # ===== Flags (set these for ablations) =====
@@ -190,7 +187,7 @@ class Head(nn.Module):
 
         args = _prep(args)
         kwargs = {k: _prep(v) for k, v in kwargs.items()}
-        with torch.cuda.amp.autocast(enabled=False):
+        with device_autocast(_DEVICE, enabled=False):
             out = fn(*args, **kwargs)
         return _finish(out)
 
@@ -497,7 +494,7 @@ class Head(nn.Module):
 
         # AlphaEdit refinement (strict fp32)
         refiner = self.AlphaEditRefiner_mix()
-        with torch.cuda.amp.autocast(enabled=False):
+        with device_autocast(_DEVICE, enabled=False):
             test_feat_enc_fp32 = self._sanitize(test_feat_enc.float(), "test_feat_enc(fp32)")
             if not torch.isfinite(test_feat_enc_fp32).all():
                 if self.training:
@@ -545,7 +542,7 @@ class Head(nn.Module):
         self, auto_cast_full, dtype, train_feat, test_feat, train_label, *args, **kwargs
     ):
         if auto_cast_full:
-            with torch.cuda.amp.autocast(dtype=dtype):
+            with device_autocast(_DEVICE, dtype=dtype):
                 results = self.filter_predictor(
                     train_feat, test_feat, train_label, *args, **kwargs
                 )
@@ -569,7 +566,7 @@ class Head(nn.Module):
         Supports context-aware architecture.
         """
         if self.auto_cast_full:
-            with torch.cuda.amp.autocast(dtype=self.dtype):
+            with device_autocast(_DEVICE, dtype=self.dtype):
                 cls_weights, bbreg_weights, cls_test_feat_enc, bbreg_test_feat_enc = (
                     self.filter_predictor.predict_cls_bbreg_filters_parallel(
                         train_feat, test_feat, train_label, num_gth_frames, *args, **kwargs
@@ -1679,7 +1676,7 @@ class Head_bf16(nn.Module):
         print("self.auto_cast_full head", self.auto_cast_full)
 
         self.dtype = (
-            torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float32
+            autocast_dtype(_DEVICE)
         )
 
         print("Head_JEPAs2")
@@ -1718,7 +1715,7 @@ class Head_bf16(nn.Module):
         )
 
         if auto_cast_full_all:
-            with torch.cuda.amp.autocast(dtype=self.dtype):
+            with device_autocast(_DEVICE, dtype=self.dtype):
                 cls_filter = JEPA_predictor_cls(cls_filter)
                 breg_filter = JEPA_predictor_breg(breg_filter)
 
@@ -1767,7 +1764,7 @@ class Head_bf16(nn.Module):
     ):
 
         if (auto_cast_full and self.training) or (auto_cast_full and infer_bf16):
-            with torch.cuda.amp.autocast(dtype=self.dtype):
+            with device_autocast(_DEVICE, dtype=self.dtype):
                 # feat:  Input feature maps. Dims (images_in_sequence, sequences, feat_dim, H, W).
                 if self.separate_filters_for_cls_and_bbreg:
                     cls_weights, bbreg_weights, test_feat_enc = self.filter_predictor(
@@ -1797,7 +1794,7 @@ class Head_bf16(nn.Module):
     ):
 
         if self.auto_cast_full:
-            with torch.cuda.amp.autocast(dtype=self.dtype):
+            with device_autocast(_DEVICE, dtype=self.dtype):
                 cls_weights, bbreg_weights, cls_test_feat_enc, bbreg_test_feat_enc = (
                     self.filter_predictor.predict_cls_bbreg_filters_parallel(
                         train_feat, test_feat, train_label, num_gth_frames, *args, **kwargs
@@ -2745,7 +2742,7 @@ class Head_(nn.Module):
     ):
 
         if (auto_cast_full and self.training) or (auto_cast_full and infer_bf16):
-            with torch.cuda.amp.autocast(dtype=dtype):
+            with device_autocast(_DEVICE, dtype=dtype):
                 # feat:  Input feature maps. Dims (images_in_sequence, sequences, feat_dim, H, W).
                 if self.separate_filters_for_cls_and_bbreg:
                     cls_weights, bbreg_weights, test_feat_enc = self.filter_predictor(
@@ -2779,7 +2776,7 @@ class Head_(nn.Module):
         if (self.net.auto_cast_full and self.training) or (
             self.net.auto_cast_full and self.infer_bf16
         ):
-            with torch.cuda.amp.autocast(dtype=self.net.dtype):
+            with device_autocast(_DEVICE, dtype=self.net.dtype):
                 cls_weights, bbreg_weights, cls_test_feat_enc, bbreg_test_feat_enc = (
                     self.filter_predictor.predict_cls_bbreg_filters_parallel(
                         train_feat, test_feat, train_label, num_gth_frames, *args, **kwargs

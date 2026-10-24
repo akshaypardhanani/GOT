@@ -20,6 +20,7 @@ from pytracking.features.preprocessing import numpy_to_torch
 from pytracking.features.preprocessing import sample_patch_multiscale, sample_patch_transformed
 from pytracking.features import augmentation
 from ltr.models.layers import activation
+from pytracking.utils.device import get_device, resolve_device
 
 from collections import OrderedDict
 
@@ -52,7 +53,7 @@ DinoPatch = 27
 use_tf32 = False
 print("use_tf32", use_tf32)
 
-if use_tf32:
+if use_tf32 and torch.cuda.is_available():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
@@ -79,7 +80,9 @@ class ToMP(BaseTracker):
         """
         self.frame_num = 1
         if not self.params.has("device"):
-            self.params.device = "cuda" if self.params.use_gpu else "cpu"
+            self.params.device = str(get_device(use_gpu=self.params.use_gpu))
+        self.device = resolve_device(self.params.device, use_gpu=self.params.use_gpu)
+        self.params.device = str(self.device)
 
         self.initialize_features()
 
@@ -103,28 +106,28 @@ class ToMP(BaseTracker):
 
         self.PT_frame_num = 8
 
-        self.label_mem = torch.zeros(self.PT_frame_num, 1, DinoPatch, DinoPatch, device="cuda")
+        self.label_mem = torch.zeros(self.PT_frame_num, 1, DinoPatch, DinoPatch, device=self.device)
 
-        self.bb_mem = torch.zeros(self.PT_frame_num, 1, 1, 4, device="cuda")
+        self.bb_mem = torch.zeros(self.PT_frame_num, 1, 1, 4, device=self.device)
 
-        self.im_patches_mean = torch.zeros(self.PT_frame_num, 1, device="cuda")
+        self.im_patches_mean = torch.zeros(self.PT_frame_num, 1, device=self.device)
 
         self.track_vis_prob = 100
 
         self.TFEcatAttn = True
 
         if self.params.TrackS == "Next":
-            self.score_visflag = torch.zeros(self.PT_frame_num, 1, device="cuda")
-            self.pred_tracks_test = torch.zeros(self.PT_frame_num, 1, device="cuda")
-            self.pred_visibility_test = torch.zeros(self.PT_frame_num, 1, device="cuda")
+            self.score_visflag = torch.zeros(self.PT_frame_num, 1, device=self.device)
+            self.pred_tracks_test = torch.zeros(self.PT_frame_num, 1, device=self.device)
+            self.pred_visibility_test = torch.zeros(self.PT_frame_num, 1, device=self.device)
         elif self.params.TrackS == "Half":
-            self.score_visflag = torch.zeros(self.PT_frame_num + 3, 1, device="cuda")
-            self.pred_tracks_test = torch.zeros(self.PT_frame_num + 3, 1, device="cuda")
-            self.pred_visibility_test = torch.zeros(self.PT_frame_num + 3, 1, device="cuda")
+            self.score_visflag = torch.zeros(self.PT_frame_num + 3, 1, device=self.device)
+            self.pred_tracks_test = torch.zeros(self.PT_frame_num + 3, 1, device=self.device)
+            self.pred_visibility_test = torch.zeros(self.PT_frame_num + 3, 1, device=self.device)
         elif self.params.TrackS == "Last":
-            self.score_visflag = torch.zeros(self.PT_frame_num + 7, 1, device="cuda")
-            self.pred_tracks_test = torch.zeros(self.PT_frame_num + 7, 1, device="cuda")
-            self.pred_visibility_test = torch.zeros(self.PT_frame_num + 7, 1, device="cuda")
+            self.score_visflag = torch.zeros(self.PT_frame_num + 7, 1, device=self.device)
+            self.pred_tracks_test = torch.zeros(self.PT_frame_num + 7, 1, device=self.device)
+            self.pred_visibility_test = torch.zeros(self.PT_frame_num + 7, 1, device=self.device)
 
         im = numpy_to_torch(image)
 
@@ -149,7 +152,7 @@ class ToMP(BaseTracker):
         self.train_img_sample_sz = torch.Tensor([tfs * stride, tfs * stride])
 
         self.im_patches_wores_mem = torch.zeros(
-            self.PT_frame_num, 1, 3, DinoPatch * stride, DinoPatch * stride, device="cuda"
+            self.PT_frame_num, 1, 3, DinoPatch * stride, DinoPatch * stride, device=self.device
         )
 
         search_area = torch.prod(self.target_sz * self.params.search_area_scale).item()
@@ -407,11 +410,11 @@ class ToMP(BaseTracker):
                 self.pred_visibility_test = pred_visibility_test_.clone()
             elif self.params.TrackS == "Half":
 
-                zeros_to_add = torch.zeros(1, 3, 128, 2, device="cuda")
+                zeros_to_add = torch.zeros(1, 3, 128, 2, device=self.device)
 
                 self.pred_tracks_test = torch.cat((pred_tracks_test_.clone(), zeros_to_add), dim=1)
 
-                zeros_to_add2 = torch.zeros(1, 3, 128, dtype=torch.bool, device="cuda")
+                zeros_to_add2 = torch.zeros(1, 3, 128, dtype=torch.bool, device=self.device)
 
                 self.pred_visibility_test = torch.cat(
                     (pred_visibility_test_.clone(), zeros_to_add2), dim=1
@@ -419,11 +422,11 @@ class ToMP(BaseTracker):
 
             elif self.params.TrackS == "Last":
 
-                zeros_to_add = torch.zeros(1, 7, 128, 2, device="cuda")
+                zeros_to_add = torch.zeros(1, 7, 128, 2, device=self.device)
 
                 self.pred_tracks_test = torch.cat((pred_tracks_test_.clone(), zeros_to_add), dim=1)
 
-                zeros_to_add2 = torch.zeros(1, 7, 128, dtype=torch.bool, device="cuda")
+                zeros_to_add2 = torch.zeros(1, 7, 128, dtype=torch.bool, device=self.device)
 
                 self.pred_visibility_test = torch.cat(
                     (pred_visibility_test_.clone(), zeros_to_add2), dim=1
@@ -958,7 +961,7 @@ class ToMP(BaseTracker):
 
             im_patches_378 = self.net.resize_5d_tensor(im_patches, size=DinoPatch * 14)
 
-            im_patches_378 = im_patches_378.cuda()
+            im_patches_378 = im_patches_378.to(self.device)
 
             backbone_feat = OrderedDict()
 
@@ -966,7 +969,7 @@ class ToMP(BaseTracker):
                 im_patches_378
             )
 
-        return backbone_feat, patch_coords, im_patches_378, im_patches.cuda()
+        return backbone_feat, patch_coords, im_patches_378, im_patches.to(self.device)
 
     # Shared backbone/head interface
     def get_backbone_head_feat(self, backbone_feat):
@@ -1076,7 +1079,7 @@ class ToMP(BaseTracker):
 
             im_patches = self.net.resize_5d_tensor(im_patches, size=DinoPatch * 14)
 
-            im_patches = im_patches.cuda()
+            im_patches = im_patches.to(self.device)
 
             init_backbone_feat = OrderedDict()
 
@@ -1369,8 +1372,8 @@ class ToMP(BaseTracker):
         _mean = torch.Tensor(mean).view(-1, 1, 1).to(im_patches.device)
         _std = torch.Tensor(std).view(-1, 1, 1).to(im_patches.device)
 
-        im_patches -= _mean.cuda()
-        im_patches /= _std.cuda()
+        im_patches -= _mean
+        im_patches /= _std
 
         return im_patches
 

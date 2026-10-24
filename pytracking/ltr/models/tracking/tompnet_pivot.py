@@ -17,7 +17,7 @@ import ltr.models.transformer.transformer as trans
 import ltr.models.transformer.filter_predictor as fp
 import ltr.models.transformer.heads as heads
 import random
-from torch.cuda.amp import autocast
+from pytracking.utils.device import autocast, get_device
 import torch
 import torchvision.transforms.functional as fn
 import torchvision.transforms as transforms
@@ -52,7 +52,7 @@ print("use_clip", use_clip)
 print("use_autocast", use_autocast)
 # # ''' CLIP
 if use_clip or use_open_clip:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = get_device()
 print("loading CLIP")
 if use_clip:
     print("import clip")
@@ -113,7 +113,7 @@ class ToMPnet(nn.Module):
         patch_w = image_shape // patch_size
 
         if use_autocast:
-            with torch.no_grad(), autocast():
+            with torch.no_grad(), autocast(device):
                 features_dict = self.feature_extractor.forward_features(images)
                 features = features_dict["x_norm_patchtokens"]
         else:
@@ -149,12 +149,12 @@ class ToMPnet(nn.Module):
             _std = torch.Tensor(std).view(-1, 1, 1)
 
             try:
-                tmp_ts_im *= _std.cuda()
-                tmp_ts_im += _mean.cuda()
+                tmp_ts_im *= _std.to(tmp_ts_im.device)
+                tmp_ts_im += _mean.to(tmp_ts_im.device)
             except:
                 ts_a = tmp_ts_im.clone()
-                ts_a *= _std.cuda()
-                ts_a += _mean.cuda()
+                ts_a *= _std.to(ts_a.device)
+                ts_a += _mean.to(ts_a.device)
                 tmp_ts_im = ts_a
 
         try:
@@ -718,12 +718,12 @@ class ToMPnet_CLIP(nn.Module):
             _std = torch.Tensor(std).view(-1, 1, 1)
 
             try:
-                tmp_ts_im *= _std.cuda()
-                tmp_ts_im += _mean.cuda()
+                tmp_ts_im *= _std.to(tmp_ts_im.device)
+                tmp_ts_im += _mean.to(tmp_ts_im.device)
             except:
                 ts_a = tmp_ts_im.clone()
-                ts_a *= _std.cuda()
-                ts_a += _mean.cuda()
+                ts_a *= _std.to(ts_a.device)
+                ts_a += _mean.to(ts_a.device)
                 tmp_ts_im = ts_a
 
         try:

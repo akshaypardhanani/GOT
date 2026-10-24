@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import contextlib, io, logging, sys
+from pytracking.utils.device import resolve_device
 
 # ---------- Optional MACs/FLOPs backends ----------
 _HAS_FVCORE = False
@@ -277,7 +278,8 @@ class _HeadBRegWrap(nn.Module):
 
 # ---------- Latency (optional, device dependent) ----------
 @torch.no_grad()
-def _latency(module: nn.Module, inputs: Union[torch.Tensor, Tuple], device: str = "cuda", warmup=15, iters=100):
+def _latency(module: nn.Module, inputs: Union[torch.Tensor, Tuple], device=None, warmup=15, iters=100):
+    device = str(resolve_device(device))
     module = module.eval().to(device)
 
     def _to(x):
@@ -315,7 +317,7 @@ def _latency(module: nn.Module, inputs: Union[torch.Tensor, Tuple], device: str 
 def profile_tomp_components(net,
                             *,
                             print_latency: bool = False,
-                            latency_device: str = "cuda",
+                            latency_device=None,
                             B: int = None,
                             S: int = None,
                             T: int = None):

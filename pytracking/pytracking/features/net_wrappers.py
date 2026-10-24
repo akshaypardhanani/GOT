@@ -1,5 +1,6 @@
 import torch
 from pytracking.utils.loading import load_network
+from pytracking.utils.device import get_device
 
 
 class NetWrapper:
@@ -9,6 +10,7 @@ class NetWrapper:
     def __init__(self, net_path, use_gpu=True, initialize=False, **kwargs):
         self.net_path = net_path
         self.use_gpu = use_gpu
+        self.device = get_device(use_gpu=use_gpu)
         self.net = None
         self.net_kwargs = kwargs
         if initialize:
@@ -29,8 +31,7 @@ class NetWrapper:
 
     def load_network(self):
         self.net = load_network(self.net_path, **self.net_kwargs)
-        if self.use_gpu:
-            self.cuda()
+        self.net.to(self.device)
         self.eval()
 
     def initialize(self):
@@ -63,8 +64,7 @@ class NetWithBackbone(NetWrapper):
         im -= self._mean
         im /= self._std
 
-        if self.use_gpu:
-            im = im.cuda()
+        im = im.to(self.device)
 
         return im
 

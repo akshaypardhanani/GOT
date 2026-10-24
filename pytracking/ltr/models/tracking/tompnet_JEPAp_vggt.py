@@ -32,7 +32,7 @@ import ltr.models.transformer.transformer as trans
 import ltr.models.transformer.filter_predictor as fp
 import ltr.models.transformer.heads as heads
 import random
-from torch.cuda.amp import autocast
+from pytracking.utils.device import autocast, autocast_dtype, get_device
 import torch
 import torchvision.transforms.functional as fn
 import torchvision.transforms as transforms
@@ -87,7 +87,7 @@ if cpu_lim:
     torch.set_num_threads(cpu_num)
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = get_device()
 
 
 class ToMPnet(nn.Module):
@@ -163,7 +163,7 @@ class ToMPnet(nn.Module):
 
         # bfloat16 is supported on Ampere GPUs (Compute Capability 8.0+)
         self.dtype = (
-            torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float32
+            autocast_dtype(device)
         )
         print("self.dtype", self.dtype)
 
@@ -185,7 +185,7 @@ class ToMPnet(nn.Module):
 
         with torch.no_grad():
             if self.auto_cast and self.training:
-                with torch.cuda.amp.autocast(dtype=self.dtype):
+                with autocast(device, dtype=self.dtype):
                     if backbone == "VIT-L":
                         total_features_inter4 = self.feature_extractor.get_intermediate_layers(
                             images,
@@ -227,7 +227,7 @@ class ToMPnet(nn.Module):
 
         total_features = torch.mean(torch.stack(total_features), dim=0)
 
-        with torch.cuda.amp.autocast(enabled=False):
+        with autocast(device, enabled=False):
             total_features = self.bkMlp(total_features)
 
         total_features = F.adaptive_avg_pool2d(total_features, DinoPatch)
@@ -249,7 +249,7 @@ class ToMPnet(nn.Module):
 
         with torch.no_grad():
             if self.auto_cast and self.training:
-                with torch.cuda.amp.autocast(dtype=self.dtype):
+                with autocast(device, dtype=self.dtype):
                     if backbone == "VIT-L":
                         inter_feats = self.feature_extractor.get_intermediate_layers(
                             images,
@@ -289,7 +289,7 @@ class ToMPnet(nn.Module):
                     raise ValueError(f"unsupported backbone: {backbone}")
 
         # fusion returns [B, C, H, W] (same H,W as first map)
-        with torch.cuda.amp.autocast(enabled=False):
+        with autocast(device, enabled=False):
             total_features = self.bkMlpMOEv2(inter_feats)
 
         # downstream pooling ()
@@ -310,7 +310,7 @@ class ToMPnet(nn.Module):
 
         with torch.no_grad():
             if (self.auto_cast and self.training) or self.bf16_vggtonly:
-                with torch.cuda.amp.autocast(dtype=self.dtype):
+                with autocast(device, dtype=self.dtype):
                     feat_list = self.feature_extractor_VGGT.forward_dpt_features(images)
             else:
                 feat_list = self.feature_extractor_VGGT.forward_dpt_features(images)
@@ -321,7 +321,7 @@ class ToMPnet(nn.Module):
         # flatten to (B*S, 128, H_dpt, W_dpt)
         feat_last_flat = feat_last.reshape(B * S, *feat_last.shape[-3:]).to(torch.float32)
 
-        with torch.cuda.amp.autocast(dtype=torch.float32):
+        with autocast(device, dtype=torch.float32):
             # adapt feature
             feat_256_flat = self.DA3_bkMlp(feat_last_flat)
 
@@ -344,7 +344,7 @@ class ToMPnet(nn.Module):
         """
         with torch.no_grad():
             if (self.auto_cast and self.training) or self.bf16_vggtonly:
-                with torch.cuda.amp.autocast(dtype=self.dtype):
+                with autocast(device, dtype=self.dtype):
 
                     try:
                         aggregated_tokens_list, ps_idx = self.feature_extractor_VGGT.aggregator(
@@ -376,7 +376,7 @@ class ToMPnet(nn.Module):
             else:
                 # force fp32 tokens for depth head
                 agg_fp32 = [t.to(torch.float32) for t in aggregated_tokens_list]
-                with torch.cuda.amp.autocast(enabled=False):
+                with autocast(device, enabled=False):
                     try:
                         f0, fl1 = self.feature_extractor_VGGT.depth_head(
                             agg_fp32, images.to(torch.float32), ps_idx, vggt_DPT_feat_ToMP=True
@@ -388,7 +388,7 @@ class ToMPnet(nn.Module):
 
             vggt_dpt_feats = [f0, fl1]
 
-        # with torch.cuda.amp.autocast(enabled=False):
+        # with autocast(device, enabled=False):
         # Cast each tensor inside the list to fp32 # remove when infer # self.bf16_vggtonly = True
         if torch.is_grad_enabled():  # auto2 (remove these)
             if self.bf16_vggtonly and not self.auto_cast:
@@ -399,7 +399,7 @@ class ToMPnet(nn.Module):
 
         f0_per, fl1_per = vggt_dpt_feats
 
-        with torch.cuda.amp.autocast(enabled=False):
+        with autocast(device, enabled=False):
             vggt_dpt_feats_ = self.vggtDPTfeatMlp(fl1_per, "fl1")
 
         vggt_dpt_feats_ = vggt_dpt_feats_.permute(1, 0, 2, 3, 4)
@@ -471,7 +471,7 @@ class ToMPnet(nn.Module):
             try:
                 with torch.no_grad():
                     if (self.auto_cast and self.training) or self.bf16_vggtonly:
-                        with torch.cuda.amp.autocast(dtype=self.dtype):
+                        with autocast(device, dtype=self.dtype):
                             agg_depth = int(self.feature_extractor_VGGT.aggregator.depth)
                     else:
                         agg_depth = int(self.feature_extractor_VGGT.aggregator.depth)
@@ -504,14 +504,14 @@ class ToMPnet(nn.Module):
 
             with torch.no_grad():
                 if (self.auto_cast and self.training) or self.bf16_vggtonly:
-                    with torch.cuda.amp.autocast(dtype=self.dtype):
+                    with autocast(device, dtype=self.dtype):
                         return self.feature_extractor_VGGT.aggregator(images, **agg_kwargs)
                 else:
                     return self.feature_extractor_VGGT.aggregator(images, **agg_kwargs)
 
         # --- AMP policy preserved ---
         if (self.auto_cast and self.training) or self.bf16_vggtonly:
-            with torch.cuda.amp.autocast(dtype=self.dtype):
+            with autocast(device, dtype=self.dtype):
                 agg_out = _call_aggregator()
         else:
             agg_out = _call_aggregator()
@@ -544,7 +544,7 @@ class ToMPnet(nn.Module):
         else:
             # vggt uses fp32 for training
             agg_fp32 = [t.to(torch.float32) for t in aggregated_tokens_list]
-            with torch.cuda.amp.autocast(enabled=False):
+            with autocast(device, enabled=False):
                 try:
                     f0, fl1 = self.feature_extractor_VGGT.depth_head(
                         agg_fp32, images.to(torch.float32), ps_idx, vggt_DPT_feat_ToMP=True
@@ -566,7 +566,7 @@ class ToMPnet(nn.Module):
 
         f0_per, fl1_per = vggt_dpt_feats
 
-        with torch.cuda.amp.autocast(enabled=False):
+        with autocast(device, enabled=False):
             vggt_dpt_feats_ = self.vggtDPTfeatMlp(fl1_per, "fl1")
 
         vggt_dpt_feats_ = vggt_dpt_feats_.permute(1, 0, 2, 3, 4)  # [S, B, ...]

@@ -6,7 +6,7 @@ from ltr.admin.tensorboard import TensorboardWriter
 import torch
 import torch.nn as nn
 import time
-from torch.cuda.amp import GradScaler
+from pytracking.utils.device import make_grad_scaler
 
 
 def freeze_batchnorm_layers(net):
@@ -73,7 +73,7 @@ class LTRTrainer(BaseTrainer):
 
         if self.use_GradScaler:
             # Instantiate GradScaler
-            scaler = GradScaler()
+            scaler = make_grad_scaler(self.device)
 
         for i, data in enumerate(loader, 1):
             # get inputs

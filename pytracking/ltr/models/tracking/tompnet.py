@@ -19,7 +19,7 @@ import ltr.models.transformer.filter_predictor as fp
 import ltr.models.transformer.heads as heads
 import random
 
-from torch.cuda.amp import autocast
+from pytracking.utils.device import get_device
 
 import torch
 
@@ -67,7 +67,7 @@ if cpu_lim:
     torch.set_num_threads(cpu_num)
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = get_device()
 
 
 class ToMPnet(nn.Module):

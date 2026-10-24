@@ -1,3 +1,4 @@
+import os
 from pytracking.utils import TrackerParams
 from pytracking.features.net_wrappers import NetWithBackbone
  
@@ -73,7 +74,7 @@ def parameters():
     params.sameTFE = 0
     ### PT
 
-    params.net = NetWithBackbone(net_path="/data1/sfchen94/pytrackingcsf/pytracking/checkpoints/ltr/tomp/GOT_JEPA/GOT_JEPA_378.tar", use_gpu=params.use_gpu)
+    params.net = NetWithBackbone(net_path=os.environ.get("GOT_JEPA_CHECKPOINT", "GOT_JEPA_378.tar"), use_gpu=params.use_gpu)
 
     params.vot_anno_conversion_type = 'preserve_area'
 

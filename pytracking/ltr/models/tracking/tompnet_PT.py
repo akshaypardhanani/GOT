@@ -19,7 +19,7 @@ import ltr.models.transformer.transformer as trans
 import ltr.models.transformer.filter_predictor as fp
 import ltr.models.transformer.heads as heads
 import random
-from torch.cuda.amp import autocast
+from pytracking.utils.device import get_device
 import torch
 import torchvision.transforms.functional as fn
 import torchvision.transforms as transforms
@@ -71,7 +71,7 @@ import matplotlib
 from ltr.models.tracking.tompnet import ToMPnet
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = get_device()
 
 
 class ToMPnet_PT(nn.Module):
@@ -183,12 +183,12 @@ class ToMPnet_PT(nn.Module):
             _std = torch.Tensor(std).view(-1, 1, 1)
 
             try:
-                tmp_ts_im *= _std.cuda()
-                tmp_ts_im += _mean.cuda()
+                tmp_ts_im *= _std.to(tmp_ts_im.device)
+                tmp_ts_im += _mean.to(tmp_ts_im.device)
             except:
                 ts_a = tmp_ts_im.clone()
-                ts_a *= _std.cuda()
-                ts_a += _mean.cuda()
+                ts_a *= _std.to(ts_a.device)
+                ts_a += _mean.to(ts_a.device)
                 tmp_ts_im = ts_a
 
         try:

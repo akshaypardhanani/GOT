@@ -1,0 +1,15 @@
+[project]
+name = "got"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "dynamic-yaml>=2.0.0",
+    "matplotlib>=3.10.9",
+    "opencv-python>=5.0.0.93",
+    "scipy>=1.15.3",
+    "timm>=1.0.30",
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
+]

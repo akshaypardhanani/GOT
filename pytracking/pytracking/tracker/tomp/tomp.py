@@ -62,9 +62,17 @@ if not mp.current_process().daemon:
 print("use_deepspeed", use_deepspeed)
 from contextlib import contextmanager
 
-use_tf32 = True
+from pytracking.utils.device import (
+    autocast,
+    get_device,
+    resolve_device,
+    supports_streams,
+    synchronize,
+)
+
+use_tf32 = torch.cuda.is_available()
 print("use_tf32", use_tf32)
-use_compile = True
+use_compile = torch.cuda.is_available()
 if use_tf32:
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -73,12 +81,10 @@ use_set_float32_matmul_precision = False
 
 @contextmanager
 def measure_time(name="block"):
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
+    synchronize()
     start = time.time()
     yield
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
+    synchronize()
     end = time.time()
     print(f"{name} took {(end - start) * 1000:.3f} ms")
 
@@ -143,9 +149,11 @@ class ToMP(BaseTracker):
         print("self.par_dino_vggt ", self.par_dino_vggt)
         self.frame_num = 1
         if not self.params.has("device"):
-            self.params.device = "cuda" if self.params.use_gpu else "cpu"
+            self.params.device = str(get_device(use_gpu=self.params.use_gpu))
+        self.device = resolve_device(self.params.device, use_gpu=self.params.use_gpu)
+        self.params.device = str(self.device)
         self.initialize_features()
-        if self.params.device.startswith("cuda") and torch.cuda.is_available():
+        if supports_streams(self.device):
             if self._dino_stream is None:
                 self._dino_stream = torch.cuda.Stream()
             if self._vggt_stream is None:
@@ -166,8 +174,7 @@ class ToMP(BaseTracker):
             else:
                 self.net = torch.compile(base, mode="reduce-overhead", fullgraph=False)
                 print(f"[torch.compile applied]")
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
+        synchronize(self.device)
         tic = time.perf_counter()
         self.show = 0
         try:
@@ -202,7 +209,7 @@ class ToMP(BaseTracker):
             3,
             DinoPatch * stride,
             DinoPatch * stride,
-            device="cuda",
+            device=self.device,
         )
         search_area = torch.prod(self.target_sz * self.params.search_area_scale).item()
         self.target_scale = math.sqrt(search_area) / self.img_sample_sz.prod().sqrt()
@@ -219,8 +226,7 @@ class ToMP(BaseTracker):
         self.target_scales = []
         self.target_not_found_counter = 0
         self.cls_weights_avg = None
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
+        synchronize(self.device)
         out = {"time": time.perf_counter() - tic}
         return out
 
@@ -585,7 +591,7 @@ class ToMP(BaseTracker):
                 self.net.JEPA_predictor_breg, "JEPA_predictor_breg(vggt)", breg_filter_vggt
             )
             refiner = self.net.head.AlphaEditRefiner_mix()
-            with torch.cuda.amp.autocast(enabled=False):
+            with autocast(self.device, enabled=False):
                 if not torch.isfinite(cls_test_feat_enc).all():
                     refined_cls_filter = cls_filter.float()
                 else:
@@ -726,7 +732,7 @@ class ToMP(BaseTracker):
             im_patches_current_resized = self.net.resize_5d_tensor(
                 im_patches_current_normalized, size=DinoPatch * DinoStride
             )
-            im_patches_current_resized = im_patches_current_resized.cuda()
+            im_patches_current_resized = im_patches_current_resized.to(self.device)
             backbone_feat_current = OrderedDict()
             with torch.inference_mode():
                 backbone_feat_current["layer3"] = (
@@ -763,7 +769,7 @@ class ToMP(BaseTracker):
                 backbone_feat_current,
                 patch_coords,
                 im_patches_current_resized,
-                im_patches_current_raw.cuda(),
+                im_patches_current_raw.to(self.device),
                 vggt_dpt_feats_output,
             )
 
@@ -786,7 +792,7 @@ class ToMP(BaseTracker):
                 im_patches_current_normalized,
                 size=DinoPatch * DinoStride,
             )
-            im_patches_current_resized = im_patches_current_resized.cuda(non_blocking=True)
+            im_patches_current_resized = im_patches_current_resized.to(self.device)
 
             backbone_feat_current = OrderedDict()
             current_patch_single_scale_for_vggt = im_patches_current_resized[0:1]
@@ -801,6 +807,32 @@ class ToMP(BaseTracker):
                 dim=0,
             )
             im_patches_in_for_vggt_batchdim = im_patches_for_vggt_cat_seqdim.permute(1, 0, 2, 3, 4)
+
+            if not supports_streams(self.device):
+                with torch.inference_mode():
+                    backbone_feat_current["layer3"] = (
+                        self.net.extract_dino_features_spatial_intermediate_layers(
+                            im_patches_current_resized
+                        )
+                    )
+                    if self.net.use_geo_type == "VGGT":
+                        vggt_dpt_feats_raw = (
+                            self.net.extract_dino_features_spatial_intermediate_layers_vggt_cat(
+                                im_patches_in_for_vggt_batchdim
+                            )
+                        )
+                    else:
+                        vggt_dpt_feats_raw = self.net.extract_da3_dpt_features_intermediate_cat(
+                            im_patches_in_for_vggt_batchdim
+                        )
+                    vggt_dpt_feats_output = vggt_dpt_feats_raw.squeeze(1)
+                return (
+                    backbone_feat_current,
+                    patch_coords,
+                    im_patches_current_resized,
+                    im_patches_current_raw,
+                    vggt_dpt_feats_output,
+                )
 
             current_stream = torch.cuda.current_stream()
             dino_stream = self._dino_stream if self._dino_stream is not None else current_stream
@@ -943,7 +975,7 @@ class ToMP(BaseTracker):
             im_patches_resized = self.net.resize_5d_tensor(
                 im_patches_normalized, size=DinoPatch * DinoStride
             )
-            im_patches_resized = im_patches_resized.cuda()
+            im_patches_resized = im_patches_resized.to(self.device)
             if not hasattr(self, "im_patches_mem") or self.im_patches_mem is None:
                 self.im_patches_mem = torch.zeros(
                     self.params.sample_memory_size + 1,
@@ -951,7 +983,7 @@ class ToMP(BaseTracker):
                     3,
                     DinoPatch * DinoStride,
                     DinoPatch * DinoStride,
-                    device="cuda",
+                    device=self.device,
                 )
             initial_patch_for_memory = im_patches_resized[0:1].unsqueeze(1)
             self.im_patches_mem = initial_patch_for_memory.repeat(
@@ -1198,8 +1230,8 @@ class ToMP(BaseTracker):
         std = [0.229, 0.224, 0.225]
         _mean = torch.Tensor(mean).view(-1, 1, 1).to(im_patches.device)
         _std = torch.Tensor(std).view(-1, 1, 1).to(im_patches.device)
-        im_patches -= _mean.cuda()
-        im_patches /= _std.cuda()
+        im_patches -= _mean
+        im_patches /= _std
         return im_patches
 
     def draw_im_rect(self, im, output_state):

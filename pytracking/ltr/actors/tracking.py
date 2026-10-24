@@ -11,6 +11,7 @@ Image batches use (T, B, 3, H, W); boxes use (T, B, 4) in (x, y, w, h) order.
 from . import BaseActor
 import torch
 import torch.nn.functional as F
+from pytracking.utils.device import autocast, get_device
 
 
 # -----------------------------------------------------------------------------
@@ -944,7 +945,7 @@ class ToMPActor_autocast(BaseActor):
         """
         # Run network
         if self.use_autocast:
-            with torch.autocast(device_type="cuda"):
+            with autocast(get_device()):
                 target_scores, bbox_preds = self.net(
                     train_imgs=data["train_images"],
                     test_imgs=data["test_images"],
@@ -2065,7 +2066,7 @@ class KYSActor(BaseActor):
         self.dimp_jitter_fn = dimp_jitter_fn
 
         # TODO set it somewhere
-        self.device = torch.device("cuda:0")
+        self.device = get_device()
 
     def __call__(self, data):
         sequence_length = data["test_images"].shape[0]

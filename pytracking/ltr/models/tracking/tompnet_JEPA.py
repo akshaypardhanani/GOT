@@ -37,6 +37,7 @@ import torchvision.transforms.functional as fn
 import torchvision.transforms as transforms
 import cv2
 import torch.nn.functional as F
+from pytracking.utils.device import get_device
 import sys
 import os.path
 from os import path
@@ -79,7 +80,7 @@ if cpu_lim:
     torch.set_num_threads(cpu_num)
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = get_device()
 
 
 class ToMPnet(nn.Module):

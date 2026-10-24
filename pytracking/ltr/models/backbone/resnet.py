@@ -28,6 +28,7 @@ from functools import partial
 
 # from mmcv.runner import load_checkpoint
 import torch
+from pytracking.utils.device import get_device, resolve_device
 import itertools
 
 print_misaligned = 1
@@ -57,13 +58,14 @@ except:
 # -----------------------------------------------------------------------------
 # GOT-Edit: geometry backbone loaders
 # -----------------------------------------------------------------------------
-def dinov2_DA3(checkpoint_path="depth-anything/da3-large", device="cuda"):
+def dinov2_DA3(checkpoint_path="depth-anything/da3-large", device=None):
     """
     Load Depth Anything 3 base model from Hugging Face hub.
 
     Returns a DepthAnything3 object (wrapper with .inference(...)).
     """
 
+    device = resolve_device(device)
     try:
         from depth_anything_3.api import DepthAnything3
 
@@ -87,11 +89,12 @@ def dinov2_DA3(checkpoint_path="depth-anything/da3-large", device="cuda"):
 
 def dinov2_StreamVGGT(
     checkpoint_path="/data/pytrackingcsf/pytracking/ltr/StreamVGGT/src/streamvggt/ckpt/checkpoints.pth",
-    device="cuda",
+    device=None,
 ):
     """
     Loads the StreamVGGT model from a local checkpoint file.
     """
+    device = resolve_device(device)
 
     try:
         # This is the only import that should work, based on your symlink
@@ -155,8 +158,9 @@ def dinov2_StreamVGGT(
     return model
 
 
-def dinov2_VGGT(checkpoint_path="facebook/VGGT-1B", device="cuda"):
+def dinov2_VGGT(checkpoint_path="facebook/VGGT-1B", device=None):
 
+    device = resolve_device(device)
     dinov2 = VGGT.from_pretrained(checkpoint_path).to(device)
     return dinov2
 
@@ -165,8 +169,9 @@ def dinov2_VGGT(checkpoint_path="facebook/VGGT-1B", device="cuda"):
 # GOT-JEPA: point tracking backbone
 # -----------------------------------------------------------------------------
 def cotracker_predictor(
-    checkpoint_path="ltr/cotracker2/co_tracker/checkpoints/cotracker2.pth", device="cuda"
+    checkpoint_path="ltr/cotracker2/co_tracker/checkpoints/cotracker2.pth", device=None
 ):
+    device = resolve_device(device)
     cotracker = CoTrackerPredictor(checkpoint=checkpoint_path).to(device)
     return cotracker
 
@@ -548,7 +553,7 @@ def dinov3(dino_name):
         weights="https://dinov3.llamameta.net/dinov3_vitl16/dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiMjRveTIwczV0d2RqNTcwcjVxdWFpbW0zIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTU0MDY3MzZ9fX1dfQ__&Signature=JN1t-OncFtkNjeoe0m7X%7ErfXvGR9gUuEUlaQc1bamJ7M%7ETV7LKXFZVoeRLxJRnfqL1vN8iZIlG-ENUAieQgvPiabTKIJdOxsy3SkavFhjPjuwSOHMdLV3B49lAVVDWR1rpkOUlCnHOGQJDVHTk0IB27qzFGuamPi%7EwyaYO565AiVtZ%7E9Dobmen5RmW5vF2O557GhasIS0e9oR7zjqj%7EOmtSjXWtLr5bzTW4-PQad9WCWvBo6KaV%7EsoLmq1ugDzLupXdC5Xeyb2DFQbA0A4kmD1F4gL4PUzY50ubn90V1wqvj0UXGLZe2doVWi0IV2PADte89o0M7dra2p6rwrXllEw__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=2433063113757620",
     )
 
-    model.to("cuda")
+    model.to(get_device())
     model.eval()
     return model
 
@@ -591,7 +596,7 @@ def dinov3_(dino_name):
     model.load_state_dict(state_dict)  # Apply the loaded weights to the model
 
     # --- MODIFICATION ENDS HERE ---
-    model.to("cuda")  # Move model to GPU after loading weights
+    model.to(get_device())  # Move model to the selected accelerator after loading weights
     model.eval()
 
     return model
@@ -619,7 +624,7 @@ def radio():
         "NVlabs/RADIO", "radio_model", version=model_version, progress=True, skip_validation=True
     )
 
-    # model.cuda().eval()
+    # model.to(get_device()).eval()
     return model
 
 
@@ -675,10 +680,11 @@ def create_depther(cfg, backbone_model, backbone_size, head_type):
     return depther
 
 
-def dinov2_Depth(backbone_model, backbone_scale):
+def dinov2_Depth(backbone_model, backbone_scale, device=None):
 
+    device = resolve_device(device)
     # backbone_model.eval()
-    backbone_model.cuda()
+    backbone_model.to(device)
     # 5. Load configuration
     HEAD_DATASET = "nyu"
     HEAD_TYPE = "dpt"
@@ -701,7 +707,7 @@ def dinov2_Depth(backbone_model, backbone_scale):
         cfg, backbone_model=backbone_model, backbone_size=backbone_name, head_type=HEAD_TYPE
     )
     load_checkpoint(model, head_checkpoint_url, map_location="cpu")
-    model.cuda()
+    model.to(device)
 
     # output = model.decode_head(input_tensor)
     return model
