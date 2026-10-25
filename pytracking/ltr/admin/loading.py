@@ -109,7 +109,10 @@ def load_network(network_dir=None, checkpoint=None, constructor_fun_name=None, c
 
 
 def load_weights(net, path, strict=True):
-    checkpoint_dict = torch.load(path)
+    try:
+        checkpoint_dict = torch.load(path, weights_only=False)
+    except TypeError:  # torch < 1.13 does not expose weights_only
+        checkpoint_dict = torch.load(path)
     weight_dict = checkpoint_dict['net']
     net.load_state_dict(weight_dict, strict=strict)
     return net
@@ -122,7 +125,10 @@ def torch_load_legacy(path):
     _setup_legacy_env()
 
     # Load network
-    checkpoint_dict = torch.load(path, map_location='cpu')
+    try:
+        checkpoint_dict = torch.load(path, map_location='cpu', weights_only=False)
+    except TypeError:  # torch < 1.13 does not expose weights_only
+        checkpoint_dict = torch.load(path, map_location='cpu')
 
     # Cleanup legacy
     _cleanup_legacy_env()

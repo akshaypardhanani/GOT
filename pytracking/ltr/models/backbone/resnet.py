@@ -33,14 +33,18 @@ import itertools
 
 print_misaligned = 1
 try:
-    from cotracker2.co_tracker.cotracker.predictor import CoTrackerPredictor
-    from vggt.models.vggt import VGGT
+    from cotracker.predictor import CoTrackerPredictor
+    print("imported CoTracker.")
+except Exception as e:
+    CoTrackerPredictor = None
+    print("Could not import CoTracker:", e)
 
-    # from FastVGGT.vggt.models.vggt import VGGT
+try:
+    from vggt.models.vggt import VGGT
     print("imported VGGT.")
-except:
-    print("Could not import VGGT.")
-    pass
+except Exception as e:
+    VGGT = None
+    print("Could not import VGGT:", e)
 import os
 import sys
 import traceback
@@ -160,6 +164,8 @@ def dinov2_StreamVGGT(
 
 def dinov2_VGGT(checkpoint_path="facebook/VGGT-1B", device=None):
 
+    if VGGT is None:
+        raise ImportError("VGGT is not installed; install the vggt package to use this backbone.")
     device = resolve_device(device)
     dinov2 = VGGT.from_pretrained(checkpoint_path).to(device)
     return dinov2
@@ -168,11 +174,36 @@ def dinov2_VGGT(checkpoint_path="facebook/VGGT-1B", device=None):
 # -----------------------------------------------------------------------------
 # GOT-JEPA: point tracking backbone
 # -----------------------------------------------------------------------------
-def cotracker_predictor(
-    checkpoint_path="ltr/cotracker2/co_tracker/checkpoints/cotracker2.pth", device=None
-):
+def cotracker_predictor(checkpoint_path=None, device=None):
+    """Load CoTracker.
+
+    The GOT-JEPA checkpoint already contains the CoTracker weights, so a
+    standalone ``cotracker2.pth`` is optional. When no file is found the model
+    is instantiated with random weights and overwritten by the parent
+    checkpoint's ``state_dict``.
+    """
+    if CoTrackerPredictor is None:
+        raise ImportError(
+            "CoTracker is not installed; run "
+            "`uv pip install -e pytracking/ltr/cotracker2/co_tracker --no-deps`."
+        )
     device = resolve_device(device)
-    cotracker = CoTrackerPredictor(checkpoint=checkpoint_path).to(device)
+    default_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "cotracker2",
+            "co_tracker",
+            "checkpoints",
+            "cotracker2.pth",
+        )
+    )
+    path = checkpoint_path or os.environ.get("COTRACKER_CHECKPOINT") or default_path
+    if not os.path.isfile(path):
+        print(f"[CoTracker] checkpoint not found at {path}; using architecture-only init.")
+        path = None
+    cotracker = CoTrackerPredictor(checkpoint=path).to(device)
     return cotracker
 
 

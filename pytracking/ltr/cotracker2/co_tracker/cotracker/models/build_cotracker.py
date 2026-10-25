@@ -32,14 +32,14 @@ def build_cotracker(checkpoint=None):
 
         try:
             with open(checkpoint, "rb") as f:
-                state_dict = torch.load(f, map_location="cpu")
+                state_dict = torch.load(f, map_location="cpu", weights_only=False)
                 if "model" in state_dict:
                     state_dict = state_dict["model"]
             cotracker.load_state_dict(state_dict)
         except: # for vot abs path
             checkpoint = "/yourpath/GOT/pytracking/ltr/cotracker2/co_tracker/checkpoints/cotracker2.pth"
             with open(checkpoint, "rb") as f:
-                state_dict = torch.load(f, map_location="cpu")
+                state_dict = torch.load(f, map_location="cpu", weights_only=False)
                 if "model" in state_dict:
                     state_dict = state_dict["model"]
             cotracker.load_state_dict(state_dict)  
