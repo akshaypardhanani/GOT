@@ -58,3 +58,5 @@ pytracking/ltr/vggt/misc/examples
 trace.json
 pytracking/ltr/StreamVGGT/src/streamvggt/ckpt/*
 pytracking/error_log_train.txt
+
+*.tar
